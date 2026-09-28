@@ -144,6 +144,18 @@ class VipSettingsController extends ApiMutableModelControllerBase
             }
         }
 
+        if ($node != null && (string)$node->mode == 'carp' && ($_POST['vip']['mode'] ?? 'carp') != 'carp') {
+            $validations = $this->getModel()->whereUsedByUuid($uuid);
+            if (!empty($validations)) {
+                return [
+                    'result' => 'failed',
+                    'validations' => [
+                        'vip.mode' => $validations
+                    ]
+                ];
+            }
+        }
+
         $result = $this->handleFormValidations($this->setBase('vip', 'vip', $uuid, $this->getVipOverlay()));
         if (!empty($result['validations'])) {
             /* skip todo registration when not applied */
@@ -194,6 +206,11 @@ class VipSettingsController extends ApiMutableModelControllerBase
             $validations = $this->getModel()->whereUsed((string)$node->subnet);
             if (!empty($validations)) {
                 throw new UserException(implode('<br/>', array_slice($validations, 0, 5)), gettext("Item in use by"));
+            }
+
+            $validations = $this->getModel()->whereUsedByUuid($uuid);
+            if (!empty($validations)) {
+                throw new UserException(implode('<br/>', $validations), gettext("Item in use by"));
             }
 
             if ((string)$node->mode == 'carp') {

@@ -17,6 +17,16 @@
         <help>When this device is configured as CARP backup it will disconnect all PPP type interfaces and try to reconnect them when becoming master again.</help>
     </field>
     <field>
+        <id>hasync.disconnectpppsvip</id>
+        <label>Depend on (CARP)</label>
+        <type>dropdown</type>
+        <help>
+            The CARP VIP the dialup interfaces depend on. When this virtual address is not in master state, all PPP links are disconnected, including during boot and after applying interface changes on the backup.
+            When empty, a PPP link follows a CARP VIP on its own parent device.
+            Select the same VIP on both nodes.
+        </help>
+    </field>
+    <field>
         <id>hasync.pfsyncinterface</id>
         <label>Synchronize all states via</label>
         <type>dropdown</type>

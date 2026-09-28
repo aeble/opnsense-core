@@ -49,6 +49,22 @@ if (!in_array($type, ['BACKUP', 'INIT', 'MASTER'])) {
 
 list ($vhid, $iface) = explode('@', $subsystem);
 
+$leader = interface_ppps_carp_leader();
+if ($leader !== null) {
+    /* all PPP links follow one VIP, other VIPs are irrelevant */
+    if ($leader['vhid'] != $vhid || $leader['device'] != $iface) {
+        exit(0);
+    }
+    /* during bootup the interfaces are not complete, start/30-ppp converges afterwards */
+    if (product::getInstance()->booting()) {
+        log_msg("CARP '$type' event from CARP VIP for dialup {$subsystem} deferred until bootup has finished");
+        exit(0);
+    }
+    log_msg("CARP '$type' event from CARP VIP for dialup {$subsystem}, converging PPP links");
+    interfaces_ppps_carp_sync();
+    exit(0);
+}
+
 foreach (config_read_array('ppps', 'ppp', false) as $ppp) {
     /* XXX this ignores MLPPP but also reduces complexity */
     if ($ppp['ports'] != $iface) {
