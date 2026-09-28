@@ -1008,6 +1008,108 @@ function interface_ppps_hardware($device)
     return $devices;
 }
 
+function interface_ppps_carp_leader()
+{
+    /*
+     * The CARP VIP that all PPP links follow when "Disconnect dialup
+     * interfaces" is combined with a VIP.  Without one the links follow
+     * CARP on their own parent device and nothing here applies.
+     */
+    $hasync = config_read_array('hasync', false);
+
+    if (empty($hasync['disconnectppps']) || empty($hasync['disconnectpppsvip'])) {
+        return null;
+    }
+
+    foreach ((new \OPNsense\Interfaces\Vip())->vip->iterateItems() as $uuid => $vip) {
+        if ($uuid == $hasync['disconnectpppsvip'] && $vip->mode->isEqual('carp')) {
+            return [
+                'vhid' => $vip->vhid->getValue(),
+                'device' => get_real_interface($vip->interface->getValue()),
+            ];
+        }
+    }
+
+    /* a stale reference must not keep the uplink down */
+    log_msg('CARP VIP for dialup not found, PPP links do not follow CARP', LOG_WARNING);
+
+    return null;
+}
+
+function interface_ppps_carp_allowed($leader = null)
+{
+    /*
+     * Whether a PPP link may run on this node: true without a leader VIP,
+     * otherwise only while the leader VIP is MASTER.  A VIP that is not up
+     * yet counts as not MASTER, so Save/Apply on a BACKUP node does not
+     * dial.  The CARP hook starts the link later.
+     */
+    $leader = $leader ?? interface_ppps_carp_leader();
+
+    if ($leader === null) {
+        return true;
+    }
+
+    $carp = legacy_interface_details($leader['device'])['carp'][$leader['vhid']] ?? [];
+
+    return ($carp['status'] ?? '') == 'MASTER';
+}
+
+function interfaces_ppps_carp_sync($verbose = false)
+{
+    /*
+     * Converge all PPP links to the state of the leader VIP: running on
+     * MASTER, suspended otherwise.  Called from the CARP hook, which ignores
+     * events during bootup.  The PPP links deferred during bootup check the
+     * leader VIP themselves when they are dialled after bootup.  The lock
+     * serializes overlapping CARP events so a link is not started twice.
+     */
+    $leader = interface_ppps_carp_leader();
+
+    if ($leader === null) {
+        return;
+    }
+
+    $fp = fopen('/var/run/ppp_carp.lock', 'a+e');
+    if ($fp === false || !flock($fp, LOCK_EX)) {
+        log_msg('interfaces_ppps_carp_sync() could not acquire lock', LOG_WARNING);
+        return;
+    }
+
+    $allowed = interface_ppps_carp_allowed($leader);
+    $ppps = config_read_array('ppps', 'ppp', false);
+
+    foreach (config_read_array('interfaces', false) as $ifkey => $ifcfg) {
+        if (!isset($ifcfg['enable']) || !interface_ppps_capable($ifcfg, $ppps)) {
+            continue;
+        }
+
+        foreach ($ppps as $ppp) {
+            if ($ppp['if'] != $ifcfg['if']) {
+                continue;
+            }
+
+            $running = isvalidpid("/var/run/{$ppp['type']}_{$ifkey}.pid");
+
+            if ($allowed && !$running) {
+                log_msg("interfaces_ppps_carp_sync() starting {$ifkey}, CARP VIP for dialup is MASTER", LOG_NOTICE);
+                service_log("Starting PPP link {$ifkey} (CARP MASTER)...", $verbose);
+                interface_ppps_configure($ifkey);
+                service_log("done.\n", $verbose);
+            } elseif (!$allowed && $running) {
+                log_msg("interfaces_ppps_carp_sync() suspending {$ifkey}, CARP VIP for dialup is not MASTER", LOG_NOTICE);
+                service_log("Suspending PPP link {$ifkey} (CARP not MASTER)...", $verbose);
+                interface_suspend($ifkey);
+                service_log("done.\n", $verbose);
+            }
+            break;
+        }
+    }
+
+    flock($fp, LOCK_UN);
+    fclose($fp);
+}
+
 function interface_ppps_reset($interface, $suspend, $ifcfg, $ppps)
 {
     if (!interface_ppps_capable($ifcfg, $ppps)) {
@@ -1317,6 +1419,12 @@ EOD;
         return false;
     }
 
+    if (!interface_ppps_carp_allowed()) {
+        log_msg("interface_ppps_configure() skipped for {$interface}, CARP VIP for dialup is not MASTER", LOG_NOTICE);
+        killbypid("/var/run/{$ppp['type']}_{$interface}.pid");
+        return false;
+    }
+
     /* stop the service as a precaution */
     killbypid("/var/run/{$ppp['type']}_{$interface}.pid");
 
@@ -1374,6 +1482,13 @@ EOD;
         default:
             legacy_interface_mtu($ifcfg['if'], $mtus[0]);
             break;
+    }
+
+    /* the leader VIP may have left MASTER while waiting for the link */
+    if (!interface_ppps_carp_allowed()) {
+        log_msg("interface_ppps_configure() stopping {$interface}, CARP VIP for dialup is not MASTER", LOG_NOTICE);
+        killbypid("/var/run/{$ppp['type']}_{$interface}.pid");
+        return false;
     }
 
     return true;

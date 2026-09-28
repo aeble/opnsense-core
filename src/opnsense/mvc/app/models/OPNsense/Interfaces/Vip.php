@@ -266,6 +266,19 @@ class Vip extends BaseModel
     }
 
     /**
+     * find references to this vip by uuid which prevent removal or a change of its mode.
+     */
+    public function whereUsedByUuid($uuid)
+    {
+        $usages = [];
+        $hasync = Config::getInstance()->object()->hasync;
+        if ($hasync != null && (string)$hasync->disconnectpppsvip === (string)$uuid) {
+            $usages[] = gettext('Selected as "Depend on (CARP)" for dialup interfaces in the High Availability settings');
+        }
+        return $usages;
+    }
+
+    /**
      * @return bool true if any of the configured vips is a carp type
      */
     public function isCarpEnabled()

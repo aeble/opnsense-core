@@ -12,6 +12,11 @@
             <Default>0</Default>
             <Required>Y</Required>
         </disconnectppps>
+        <disconnectpppsvip type="VirtualIPField">
+            <type>carp</type>
+            <key>mvc</key>
+            <BlankDesc>Parent device of the PPP link</BlankDesc>
+        </disconnectpppsvip>
         <pfsyncinterface type="InterfaceField">
             <AllowDynamic>Y</AllowDynamic>
             <BlankDesc>Disabled</BlankDesc>
