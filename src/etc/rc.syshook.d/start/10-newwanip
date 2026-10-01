@@ -16,12 +16,12 @@ for IPV6 in $(find /tmp -type f -name "newwanipv6_*"); do
 	configctl -dq interface newipv6 ${INTERFACE} force
 done
 
-for PPP in $(find /tmp -type -f -name "pppconfigure_*"); do
+for PPP in $(find /tmp -type f -name "pppconfigure_*"); do
 	INTERFACE=$(cat "${PPP}")
 	rm "${PPP}"
 
 	echo "Dialing PPP on ${INTERFACE}"
 	# XXX run without -d to avoid code races
-	# XXX adjust handling for CARP HA
+	# with a CARP VIP for dialup only the MASTER node dials here
 	configctl -q interface reconfigure ${INTERFACE}
 done
