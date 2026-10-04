@@ -57,25 +57,16 @@ if ($leader !== null) {
     if ($leader['vhid'] != $vhid || $leader['device'] != $iface) {
         exit(0);
     }
-    log_msg("CARP '$type' event from CARP VIP for dialup {$subsystem}, converging PPP links");
-    interfaces_ppps_carp_sync();
-    exit(0);
-}
-
-foreach (config_read_array('ppps', 'ppp', false) as $ppp) {
-    /* XXX this ignores MLPPP but also reduces complexity */
-    if ($ppp['ports'] != $iface) {
-        continue;
+} else {
+    /* PPP stores ports as configured interfaces or devices */
+    $ports = [];
+    foreach (config_read_array('ppps', 'ppp', false) as $ppp) {
+        $ports = array_merge($ports, interface_ppps_hardware($ppp['if']));
     }
-
-    foreach (config_read_array('interfaces', false) as $ifkey => $interface) {
-        if ($ppp['if'] == $interface['if']) {
-            log_msg("{$iface} is connected to ppp interface {$ifkey} set new status {$type}");
-            if (in_array($type, ['BACKUP', 'INIT'])) {
-                interface_suspend($ifkey);
-            } else {
-                interface_ppps_configure($ifkey);
-            }
-        }
+    if (!in_array($iface, $ports)) {
+        exit(0);
     }
 }
+
+log_msg("CARP '$type' event from {$subsystem}, converging PPP links");
+interfaces_ppps_carp_sync();

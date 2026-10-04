@@ -22,6 +22,6 @@ for PPP in $(find /tmp -type f -name "pppconfigure_*"); do
 
 	echo "Dialing PPP on ${INTERFACE}"
 	# XXX run without -d to avoid code races
-	# with a CARP VIP for dialup only the MASTER node dials here
+	# with "Disconnect dialup interfaces" only the CARP MASTER dials here
 	configctl -q interface reconfigure ${INTERFACE}
 done
